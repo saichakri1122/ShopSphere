@@ -10,6 +10,7 @@ const cartRoutes = require("./cart/routes/cartroutes");
 const wishlistRoutes = require("./wishlist/routes/wishlistroutes");
 const addressRoutes = require("./addresses/routes/addressroutes");
 const orderRoutes = require("./orders/routes/orderroutes");
+const paymentRoutes = require("./payments/routes/paymentroutes");
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use("/api/cart",cartRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/addresses", addressRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/payments", paymentRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({

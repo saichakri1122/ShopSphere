@@ -16,6 +16,7 @@ async function getOrdersByUserId(userId) {
         o.shipping_fee,
         o.discount_amount,
         o.total_amount,
+        o.stock_reserved_until,
 
         o.shipping_full_name,
         o.shipping_phone,
@@ -38,7 +39,8 @@ async function getOrdersByUserId(userId) {
               'product_slug', oi.product_slug,
               'quantity', oi.quantity,
               'unit_price', oi.unit_price,
-              'total_price', oi.total_price
+              'total_price', oi.total_price,
+              'stock_reserved', oi.stock_reserved
             )
             ORDER BY oi.created_at ASC
           ) FILTER (WHERE oi.id IS NOT NULL),
@@ -62,7 +64,6 @@ async function getOrdersByUserId(userId) {
   return result.rows;
 }
 
-
 // =========================================================
 // GET ONE ORDER
 // =========================================================
@@ -79,6 +80,7 @@ async function getOrderById(userId, orderId) {
         o.shipping_fee,
         o.discount_amount,
         o.total_amount,
+        o.stock_reserved_until,
 
         o.shipping_full_name,
         o.shipping_phone,
@@ -101,7 +103,8 @@ async function getOrderById(userId, orderId) {
               'product_slug', oi.product_slug,
               'quantity', oi.quantity,
               'unit_price', oi.unit_price,
-              'total_price', oi.total_price
+              'total_price', oi.total_price,
+              'stock_reserved', oi.stock_reserved
             )
             ORDER BY oi.created_at ASC
           ) FILTER (WHERE oi.id IS NOT NULL),
@@ -123,7 +126,6 @@ async function getOrderById(userId, orderId) {
 
   return result.rows[0] || null;
 }
-
 
 // =========================================================
 // CREATE ORDER FROM CART
@@ -164,7 +166,6 @@ async function createOrder(userId, addressId) {
       throw new Error("ADDRESS_NOT_FOUND");
     }
 
-
     // -----------------------------------------------------
     // 2. Get user's cart
     // -----------------------------------------------------
@@ -184,9 +185,8 @@ async function createOrder(userId, addressId) {
       throw new Error("CART_NOT_FOUND");
     }
 
-
     // -----------------------------------------------------
-    // 3. Get cart items + current product data
+    // 3. Get cart items + lock products
     // -----------------------------------------------------
 
     const cartItemsResult = await client.query(
@@ -220,7 +220,6 @@ async function createOrder(userId, addressId) {
       throw new Error("CART_EMPTY");
     }
 
-
     // -----------------------------------------------------
     // 4. Validate products + calculate subtotal
     // -----------------------------------------------------
@@ -228,7 +227,6 @@ async function createOrder(userId, addressId) {
     let subtotal = 0;
 
     for (const item of cartItems) {
-
       if (!item.is_active) {
         throw new Error(
           `PRODUCT_INACTIVE:${item.product_id}`
@@ -244,9 +242,8 @@ async function createOrder(userId, addressId) {
       subtotal += Number(item.price) * item.quantity;
     }
 
-
     // -----------------------------------------------------
-    // 5. Calculate order totals
+    // 5. Calculate totals
     // -----------------------------------------------------
 
     const shippingFee = 0;
@@ -257,7 +254,6 @@ async function createOrder(userId, addressId) {
       shippingFee -
       discountAmount;
 
-
     // -----------------------------------------------------
     // 6. Generate order number
     // -----------------------------------------------------
@@ -265,7 +261,6 @@ async function createOrder(userId, addressId) {
     const orderNumber = `SS-${Date.now()}-${Math.floor(
       Math.random() * 1000
     )}`;
-
 
     // -----------------------------------------------------
     // 7. Create order
@@ -285,6 +280,8 @@ async function createOrder(userId, addressId) {
           shipping_fee,
           discount_amount,
           total_amount,
+
+          stock_reserved_until,
 
           shipping_full_name,
           shipping_phone,
@@ -309,6 +306,8 @@ async function createOrder(userId, addressId) {
           $6,
           $7,
 
+          CURRENT_TIMESTAMP + INTERVAL '15 minutes',
+
           $8,
           $9,
           $10,
@@ -328,6 +327,7 @@ async function createOrder(userId, addressId) {
           shipping_fee,
           discount_amount,
           total_amount,
+          stock_reserved_until,
           created_at
       `,
       [
@@ -353,13 +353,11 @@ async function createOrder(userId, addressId) {
 
     const order = orderResult.rows[0];
 
-
     // -----------------------------------------------------
-    // 8. Create order items
+    // 8. Create order items + reserve stock
     // -----------------------------------------------------
 
     for (const item of cartItems) {
-
       const itemTotal =
         Number(item.price) * item.quantity;
 
@@ -372,7 +370,8 @@ async function createOrder(userId, addressId) {
             product_slug,
             quantity,
             unit_price,
-            total_price
+            total_price,
+            stock_reserved
           )
 
           VALUES (
@@ -382,7 +381,8 @@ async function createOrder(userId, addressId) {
             $4,
             $5,
             $6,
-            $7
+            $7,
+            TRUE
           )
         `,
         [
@@ -396,11 +396,7 @@ async function createOrder(userId, addressId) {
         ]
       );
 
-
-      // ---------------------------------------------------
-      // 9. Reduce product stock
-      // ---------------------------------------------------
-
+      // Reserve stock
       await client.query(
         `
           UPDATE products
@@ -418,9 +414,8 @@ async function createOrder(userId, addressId) {
       );
     }
 
-
     // -----------------------------------------------------
-    // 10. Clear cart
+    // 9. Clear cart
     // -----------------------------------------------------
 
     await client.query(
@@ -431,23 +426,91 @@ async function createOrder(userId, addressId) {
       [cart.id]
     );
 
-
     await client.query("COMMIT");
 
     return order;
 
   } catch (error) {
-
     await client.query("ROLLBACK");
-
     throw error;
 
   } finally {
-
     client.release();
   }
 }
 
+// =========================================================
+// RELEASE RESERVED STOCK
+// =========================================================
+
+async function releaseReservedStock(
+  orderId,
+  client
+) {
+  const itemsResult = await client.query(
+    `
+      SELECT
+        id,
+        product_id,
+        quantity
+
+      FROM order_items
+
+      WHERE order_id = $1
+        AND stock_reserved = TRUE
+        AND product_id IS NOT NULL
+
+      FOR UPDATE
+    `,
+    [orderId]
+  );
+
+  for (const item of itemsResult.rows) {
+
+    await client.query(
+      `
+        UPDATE products
+
+        SET
+          stock_quantity = stock_quantity + $1,
+          updated_at = CURRENT_TIMESTAMP
+
+        WHERE id = $2
+      `,
+      [
+        item.quantity,
+        item.product_id,
+      ]
+    );
+
+    // Prevent releasing the same stock twice
+    await client.query(
+      `
+        UPDATE order_items
+
+        SET
+          stock_reserved = FALSE
+
+        WHERE id = $1
+      `,
+      [item.id]
+    );
+  }
+
+  // Reservation is no longer active
+  await client.query(
+    `
+      UPDATE orders
+
+      SET
+        stock_reserved_until = NULL,
+        updated_at = CURRENT_TIMESTAMP
+
+      WHERE id = $1
+    `,
+    [orderId]
+  );
+}
 
 // =========================================================
 // CANCEL ORDER
@@ -467,13 +530,21 @@ async function cancelOrder(userId, orderId) {
       `
         SELECT
           id,
-          status
+          status,
+          payment_status,
+          stock_reserved_until
+
         FROM orders
+
         WHERE id = $1
           AND user_id = $2
+
         FOR UPDATE
       `,
-      [orderId, userId]
+      [
+        orderId,
+        userId,
+      ]
     );
 
     const order = orderResult.rows[0];
@@ -481,7 +552,6 @@ async function cancelOrder(userId, orderId) {
     if (!order) {
       throw new Error("ORDER_NOT_FOUND");
     }
-
 
     // -----------------------------------------------------
     // 2. Check cancellation status
@@ -491,53 +561,22 @@ async function cancelOrder(userId, orderId) {
       order.status !== "pending" &&
       order.status !== "confirmed"
     ) {
-      throw new Error("ORDER_CANNOT_BE_CANCELLED");
-    }
-
-
-    // -----------------------------------------------------
-    // 3. Get order items
-    // -----------------------------------------------------
-
-    const itemsResult = await client.query(
-      `
-        SELECT
-          product_id,
-          quantity
-        FROM order_items
-        WHERE order_id = $1
-          AND product_id IS NOT NULL
-      `,
-      [orderId]
-    );
-
-
-    // -----------------------------------------------------
-    // 4. Restore stock
-    // -----------------------------------------------------
-
-    for (const item of itemsResult.rows) {
-
-      await client.query(
-        `
-          UPDATE products
-
-          SET
-            stock_quantity = stock_quantity + $1,
-            updated_at = CURRENT_TIMESTAMP
-
-          WHERE id = $2
-        `,
-        [
-          item.quantity,
-          item.product_id,
-        ]
+      throw new Error(
+        "ORDER_CANNOT_BE_CANCELLED"
       );
     }
 
+    // -----------------------------------------------------
+    // 3. Release reserved stock
+    // -----------------------------------------------------
+
+    await releaseReservedStock(
+      orderId,
+      client
+    );
 
     // -----------------------------------------------------
-    // 5. Cancel order
+    // 4. Cancel order
     // -----------------------------------------------------
 
     const updateResult = await client.query(
@@ -546,6 +585,7 @@ async function cancelOrder(userId, orderId) {
 
         SET
           status = 'cancelled',
+          stock_reserved_until = NULL,
           updated_at = CURRENT_TIMESTAMP
 
         WHERE id = $1
@@ -561,27 +601,201 @@ async function cancelOrder(userId, orderId) {
       [orderId]
     );
 
-
     await client.query("COMMIT");
 
     return updateResult.rows[0];
 
   } catch (error) {
-
     await client.query("ROLLBACK");
-
     throw error;
 
   } finally {
-
     client.release();
   }
 }
 
+// =========================================================
+// CANCEL UNPAID ORDER
+// =========================================================
+
+async function cancelUnpaidOrder(orderId) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const orderResult = await client.query(
+      `
+        SELECT
+          id,
+          status,
+          payment_status,
+          stock_reserved_until
+
+        FROM orders
+
+        WHERE id = $1
+
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+
+    const order = orderResult.rows[0];
+
+    if (!order) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+
+    // Only unpaid orders can be released
+    if (order.payment_status === "paid") {
+      throw new Error("ORDER_ALREADY_PAID");
+    }
+
+    await releaseReservedStock(
+      orderId,
+      client
+    );
+
+    await client.query(
+      `
+        UPDATE orders
+
+        SET
+          status = 'cancelled',
+          stock_reserved_until = NULL,
+          updated_at = CURRENT_TIMESTAMP
+
+        WHERE id = $1
+      `,
+      [orderId]
+    );
+
+    await client.query("COMMIT");
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+
+  } finally {
+    client.release();
+  }
+}
+
+// =========================================================
+// EXPIRE ORDER RESERVATION
+// =========================================================
+
+async function expireOrderReservation(orderId) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // -----------------------------------------------------
+    // 1. Lock order
+    // -----------------------------------------------------
+
+    const orderResult = await client.query(
+      `
+        SELECT
+          id,
+          status,
+          payment_status,
+          stock_reserved_until
+
+        FROM orders
+
+        WHERE id = $1
+
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+
+    const order = orderResult.rows[0];
+
+    if (!order) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+
+    // -----------------------------------------------------
+    // 2. Check reservation
+    // -----------------------------------------------------
+
+    if (!order.stock_reserved_until) {
+      throw new Error("RESERVATION_NOT_ACTIVE");
+    }
+
+    if (
+      new Date(order.stock_reserved_until) > new Date()
+    ) {
+      throw new Error("RESERVATION_NOT_EXPIRED");
+    }
+
+    // -----------------------------------------------------
+    // 3. Do not expire a paid order
+    // -----------------------------------------------------
+
+    if (order.payment_status === "paid") {
+      throw new Error("ORDER_ALREADY_PAID");
+    }
+
+    // -----------------------------------------------------
+    // 4. Release stock
+    // -----------------------------------------------------
+
+    await releaseReservedStock(
+      orderId,
+      client
+    );
+
+    // -----------------------------------------------------
+    // 5. Cancel expired order
+    // -----------------------------------------------------
+
+    await client.query(
+      `
+        UPDATE orders
+
+        SET
+          status = 'cancelled',
+          payment_status = 'failed',
+          stock_reserved_until = NULL,
+          updated_at = CURRENT_TIMESTAMP
+
+        WHERE id = $1
+      `,
+      [orderId]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      orderId,
+      status: "cancelled",
+      reason: "Stock reservation expired",
+    };
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+
+  } finally {
+    client.release();
+  }
+}
+
+// =========================================================
+// EXPORTS
+// =========================================================
 
 module.exports = {
   getOrdersByUserId,
   getOrderById,
   createOrder,
   cancelOrder,
+  cancelUnpaidOrder,
+  releaseReservedStock,
+  expireOrderReservation,
 };
