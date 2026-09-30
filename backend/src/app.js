@@ -8,6 +8,8 @@ const categoryRoutes = require("./categories/routes/categoryroutes");
 const productImageRoutes = require("./products/routes/productimageroutes");
 const cartRoutes = require("./cart/routes/cartroutes");
 const wishlistRoutes = require("./wishlist/routes/wishlistroutes");
+const addressRoutes = require("./addresses/routes/addressroutes");
+const orderRoutes = require("./orders/routes/orderroutes");
 
 const app = express();
 
@@ -28,7 +30,8 @@ app.use("/api/products", productImageRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/cart",cartRoutes);
 app.use("/api/wishlist", wishlistRoutes);
-
+app.use("/api/addresses", addressRoutes);
+app.use("/api/orders", orderRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
