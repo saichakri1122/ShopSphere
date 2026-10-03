@@ -11,6 +11,7 @@ const wishlistRoutes = require("./wishlist/routes/wishlistroutes");
 const addressRoutes = require("./addresses/routes/addressroutes");
 const orderRoutes = require("./orders/routes/orderroutes");
 const paymentRoutes = require("./payments/routes/paymentroutes");
+const adminProductRoutes = require("./products/routes/adminproductroutes");
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/addresses", addressRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/admin/products", adminProductRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
