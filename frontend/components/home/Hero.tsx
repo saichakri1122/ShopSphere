@@ -35,7 +35,7 @@ export default function Hero() {
             </Link>
 
             <Link
-              href="/categories"
+              href="/new-arrivals"
               className="text-sm font-semibold text-[#17202a] underline decoration-[#b9b7b1] underline-offset-4 transition-colors hover:decoration-[#17202a]"
             >
               Explore collections

@@ -1,83 +1,141 @@
 import Link from "next/link";
+const HERO_IMAGE = "/promo_banner.png";
+
+<img
+  src={HERO_IMAGE}
+  alt="ShopSphere curated lifestyle collection"
+  className="absolute inset-0 h-full w-full object-cover"
+  loading="eager"
+  fetchPriority="high"
+/>
 
 export default function PromoBanner() {
   return (
-    <section className="bg-[#f8f7f4] px-5 py-8 sm:px-8 sm:py-12">
+    <section className="bg-[#f8f7f4] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <div className="relative overflow-hidden rounded-[2rem] bg-[#dce4dc]">
-          
-          {/* Decorative shapes */}
-          <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/30 blur-sm" />
-          <div className="absolute -bottom-28 left-1/3 h-80 w-80 rounded-full bg-[#2e7d32]/10 blur-2xl" />
+        <div className="relative isolate overflow-hidden rounded-[2rem] bg-[#e9eee5] shadow-sm">
+          {/* Decorative background shapes */}
+          <div className="absolute -left-24 -top-24 -z-10 h-72 w-72 rounded-full bg-white/50 blur-3xl" />
+          <div className="absolute -bottom-32 left-1/4 -z-10 h-80 w-80 rounded-full bg-[#2e7d32]/10 blur-3xl" />
 
-          <div className="relative grid min-h-[420px] items-center lg:grid-cols-2">
-            
-            {/* Content */}
-            <div className="px-7 py-14 sm:px-12 sm:py-16 lg:px-16">
-              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.25em] text-[#687280]">
+          <div className="grid items-stretch lg:grid-cols-2">
+            {/* Left: Content */}
+            <div className="flex flex-col justify-center px-6 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-10 xl:px-12">
+              <span className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-[#dce4d8] bg-white/70 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#2e7d32] sm:text-xs">
+                <span aria-hidden="true">✳</span>
                 The ShopSphere Edit
-              </p>
+              </span>
 
-              <h2 className="max-w-xl text-4xl font-semibold leading-[1.05] tracking-[-0.05em] text-[#17202a] sm:text-5xl lg:text-6xl">
-                Designed for everyday living.
+              <h2 className="max-w-xl text-4xl font-bold leading-[1.08] tracking-[-0.045em] text-[#17202a] sm:text-5xl xl:text-6xl">
+                Designed for everyday{" "}
+                <span className="text-[#2e7d32]">living.</span>
               </h2>
 
-              <p className="mt-6 max-w-md text-sm leading-6 text-[#687280] sm:text-base">
+              <p className="mt-6 max-w-lg text-sm leading-7 text-[#667064] sm:text-base sm:leading-8">
                 Discover thoughtfully selected products that bring a little
                 more style, comfort and simplicity to your everyday.
               </p>
 
-              <Link
-                href="/collections"
-                className="mt-8 inline-flex items-center gap-3 rounded-full bg-[#17202a] px-6 py-3.5 text-sm font-semibold text-white transition-all duration-300 hover:bg-[#2e7d32]"
-              >
-                Explore collection
-                <span className="text-base">↗</span>
-              </Link>
+              <div className="mt-8">
+                <Link
+                  href="/products"
+                  className="group inline-flex items-center gap-4 rounded-full bg-[#17202a] px-7 py-4 text-sm font-semibold text-white shadow-md transition duration-300 hover:-translate-y-0.5 hover:bg-[#2e7d32] hover:shadow-lg"
+                >
+                  Explore Collection
+                  <span className="text-lg transition-transform duration-300 group-hover:translate-x-1">
+                    →
+                  </span>
+                </Link>
+              </div>
+
+              {/* Trust highlights */}
+              <div className="mt-10 grid grid-cols-1 gap-4 border-t border-[#d5ddd0] pt-6 sm:grid-cols-3 sm:gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/80 text-xl">
+                    🚚
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[#17202a]">
+                      Free Shipping
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#667064]">
+                      On eligible orders
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/80 text-xl">
+                    🛡️
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[#17202a]">
+                      Secure Shopping
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#667064]">
+                      Shop with confidence
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/80 text-xl">
+                    💬
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[#17202a]">
+                      Customer Support
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#667064]">
+                      Here when you need us
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Visual */}
-            <div className="relative hidden h-full min-h-[420px] lg:block">
-              
-              {/* Main visual */}
-              <div className="absolute right-[15%] top-1/2 flex h-64 w-64 -translate-y-1/2 items-center justify-center rounded-full bg-white/35 shadow-sm backdrop-blur-sm">
-                <div className="flex h-44 w-44 items-center justify-center rounded-full bg-white/45 text-8xl">
-                  ✨
+            {/* Right: Lifestyle Image */}
+            <div className="relative min-h-[260px] overflow-hidden sm:min-h-[320px] lg:min-h-[420px]">
+              <img
+                src={HERO_IMAGE}
+                alt="A curated lifestyle collection for everyday living"
+                className="absolute inset-0 h-full w-full object-cover"
+                loading="lazy"
+              />
+
+              {/* Image overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-[#17202a]/35 via-transparent to-[#17202a]/5" />
+
+              {/* Top floating card */}
+              <div className="absolute right-4 top-5 flex items-center gap-3 rounded-2xl border border-white/50 bg-white/90 px-4 py-3 shadow-lg backdrop-blur-md sm:right-7 sm:top-8 sm:px-5 sm:py-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e8f0e4] text-xl">
+                  🌿
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-[#17202a] sm:text-sm">
+                    Thoughtfully Curated
+                  </p>
+                  <p className="mt-1 text-xs text-[#667064]">
+                    Just for your everyday
+                  </p>
                 </div>
               </div>
 
-              {/* Floating cards */}
-              <div className="absolute right-[8%] top-[16%] rounded-2xl bg-white/75 px-5 py-4 shadow-sm backdrop-blur-md">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#687280]">
-                  Curated
-                </p>
-                <p className="mt-1 text-sm font-semibold text-[#17202a]">
-                  Just for you
-                </p>
-              </div>
-
-              <div className="absolute bottom-[15%] left-[8%] rounded-2xl bg-white/75 px-5 py-4 shadow-sm backdrop-blur-md">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#687280]">
-                  Quality
-                </p>
-                <p className="mt-1 text-sm font-semibold text-[#17202a]">
-                  Made to last
-                </p>
-              </div>
-
-              {/* Decorative circle */}
-              <div className="absolute bottom-[-80px] right-[-30px] h-52 w-52 rounded-full border border-[#17202a]/10" />
-            </div>
-
-            {/* Mobile visual */}
-            <div className="relative flex h-64 items-center justify-center lg:hidden">
-              <div className="flex h-48 w-48 items-center justify-center rounded-full bg-white/35 shadow-sm backdrop-blur-sm">
-                <div className="flex h-32 w-32 items-center justify-center rounded-full bg-white/45 text-6xl">
+              {/* Bottom floating card */}
+              <div className="absolute bottom-5 left-4 flex items-center gap-3 rounded-2xl border border-white/50 bg-white/90 px-4 py-3 shadow-lg backdrop-blur-md sm:bottom-8 sm:left-7 sm:px-5 sm:py-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f4eadc] text-xl">
                   ✨
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-[#17202a] sm:text-sm">
+                    Everyday Essentials
+                  </p>
+                  <p className="mt-1 text-xs text-[#667064]">
+                    Style meets simplicity
+                  </p>
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </div>

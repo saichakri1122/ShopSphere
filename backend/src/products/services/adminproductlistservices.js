@@ -30,6 +30,18 @@ async function getAllProducts() {
   return result.rows;
 }
 
+async function getActiveProductCount() {
+  const result = await pool.query(`
+    SELECT COUNT(*) AS total_products
+    FROM products
+    WHERE is_active = TRUE
+  `);
+
+  return Number(result.rows[0].total_products);
+}
+
 module.exports = {
   getAllProducts,
+  getActiveProductCount,
+
 };

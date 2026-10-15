@@ -1,75 +1,89 @@
+
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const products = [
-  {
-    id: 1,
-    name: "AeroSound Wireless Headphones",
-    category: "Tech & Audio",
-    price: "₹4,999",
-    oldPrice: "₹6,499",
-    rating: "4.8",
-    reviews: "124",
-    badge: "Best Seller",
-    image: "🎧",
-    bg: "bg-[#e2e7e3]",
-  },
-  {
-    id: 2,
-    name: "Minimal Everyday Backpack",
-    category: "Accessories",
-    price: "₹2,799",
-    oldPrice: "₹3,499",
-    rating: "4.7",
-    reviews: "89",
-    badge: "New",
-    image: "🎒",
-    bg: "bg-[#e9dfd5]",
-  },
-  {
-    id: 3,
-    name: "Luma Desk Lamp",
-    category: "Home & Living",
-    price: "₹1,899",
-    oldPrice: "₹2,499",
-    rating: "4.9",
-    reviews: "76",
-    badge: "Popular",
-    image: "💡",
-    bg: "bg-[#dedbd1]",
-  },
-  {
-    id: 4,
-    name: "Essential Oversized Tee",
-    category: "Fashion",
-    price: "₹1,299",
-    oldPrice: "₹1,699",
-    rating: "4.6",
-    reviews: "152",
-    badge: "Trending",
-    image: "👕",
-    bg: "bg-[#dce2e7]",
-  },
-];
+const API_URL = "http://localhost:5000";
+
+type ProductImage = {
+  id: string;
+  image_url: string;
+  alt_text?: string | null;
+  is_primary?: boolean;
+  display_order?: number;
+};
+
+type Product = {
+  id: string;
+  name: string;
+  slug: string;
+  category_name: string;
+  price: number | string;
+  compare_at_price?: number | string | null;
+  rating?: number | string | null;
+  review_count?: number;
+  is_featured: boolean;
+  stock_quantity: number;
+  images: ProductImage[];
+};
 
 export default function FeaturedProducts() {
-  const [wishlist, setWishlist] = useState<number[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const toggleWishlist = (id: number) => {
-    setWishlist((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id]
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadProducts() {
+      try {
+        const response = await fetch(`${API_URL}/api/products`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || "Unable to load products.");
+        }
+
+        const featured = (data.products as Product[])
+          .filter((product) => product.is_featured)
+          .slice(0, 4);
+
+        setProducts(featured);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+
+        console.error("Featured products error:", err);
+        setError("We couldn't load featured products. Please try again.");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+
+    void loadProducts();
+
+    return () => controller.abort();
+  }, []);
+
+  function getImage(product: Product) {
+    const images = product.images ?? [];
+    return (
+      images.find((image) => image.is_primary)?.image_url ??
+      images[0]?.image_url ??
+      null
     );
-  };
+  }
+
+  const formatPrice = (price: number | string) =>
+    `₹${Number(price).toLocaleString("en-IN")}`;
 
   return (
     <section className="border-t border-[#e5e2dc] bg-[#f8f7f4]">
       <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-20 lg:py-24">
-
-        {/* Header */}
         <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
           <div>
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-[#687280]">
@@ -87,112 +101,114 @@ export default function FeaturedProducts() {
           </div>
 
           <Link
-            href="/shop"
-            className="w-fit text-sm font-semibold text-[#17202a] underline decoration-[#b9b7b1] underline-offset-4 transition-colors hover:decoration-[#17202a]"
+            href="/products"
+            className="w-fit text-sm font-semibold text-[#17202a] underline decoration-[#b9b7b1] underline-offset-4 hover:decoration-[#17202a]"
           >
             View all products →
           </Link>
         </div>
 
-        {/* Product Grid */}
-        <div className="mt-10 grid grid-cols-1 gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-          {products.map((product) => {
-            const isWishlisted = wishlist.includes(product.id);
+        {loading ? (
+          <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((item) => (
+              <div
+                key={item}
+                className="aspect-[4/5] animate-pulse rounded-2xl bg-[#e9e6df]"
+              />
+            ))}
+          </div>
+        ) : error ? (
+          <p role="alert" className="mt-10 text-sm text-red-600">
+            {error}
+          </p>
+        ) : products.length === 0 ? (
+          <p className="mt-10 text-sm text-[#687280]">
+            No featured products available yet.
+          </p>
+        ) : (
+          <div className="mt-10 grid grid-cols-1 gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+            {products.map((product) => {
+              const imageUrl = getImage(product);
+              const oldPrice = Number(product.compare_at_price);
+              const hasDiscount =
+                product.compare_at_price != null &&
+                Number.isFinite(oldPrice) &&
+                oldPrice > Number(product.price);
 
-            return (
-              <article key={product.id} className="group">
-
-                {/* Product Image */}
-                <div
-                  className={`relative aspect-[4/5] overflow-hidden rounded-2xl ${product.bg}`}
-                >
-                  {/* Badge */}
-                  <span className="absolute left-4 top-4 z-10 rounded-full bg-white/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#17202a] backdrop-blur-sm">
-                    {product.badge}
-                  </span>
-
-                  {/* Wishlist */}
-                  <button
-                    type="button"
-                    onClick={() => toggleWishlist(product.id)}
-                    aria-label={
-                      isWishlisted
-                        ? `Remove ${product.name} from wishlist`
-                        : `Add ${product.name} to wishlist`
-                    }
-                    className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-[#17202a] backdrop-blur-sm transition-all duration-300 hover:scale-105"
+              return (
+                <article key={product.id} className="group">
+                  <Link
+                    href={`/products/${encodeURIComponent(product.slug)}`}
+                    className="block"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill={isWishlisted ? "currentColor" : "none"}
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.7}
-                      stroke="currentColor"
-                      className="h-4 w-4"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733C11.285 4.876 9.623 3.75 7.688 3.75 5.099 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
-                      />
-                    </svg>
-                  </button>
-
-                  {/* Temporary Product Visual */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="flex h-40 w-40 items-center justify-center rounded-full bg-white/30 text-7xl shadow-sm backdrop-blur-[2px] transition-transform duration-500 group-hover:scale-110 sm:h-44 sm:w-44">
-                      {product.image}
-                    </div>
-                  </div>
-
-                  {/* Add to Cart */}
-                  <button
-                    type="button"
-                    className="absolute bottom-4 left-4 right-4 translate-y-2 rounded-xl bg-[#17202a] px-4 py-3 text-sm font-semibold text-white opacity-0 transition-all duration-300 hover:bg-[#2e7d32] group-hover:translate-y-0 group-hover:opacity-100"
-                  >
-                    Add to cart
-                  </button>
-                </div>
-
-                {/* Product Details */}
-                <div className="pt-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#687280]">
-                    {product.category}
-                  </p>
-
-                  <h3 className="mt-2 text-base font-semibold tracking-[-0.02em] text-[#17202a]">
-                    {product.name}
-                  </h3>
-
-                  {/* Rating */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="flex items-center gap-0.5 text-[#2e7d32]">
-                      <span className="text-sm">★</span>
-                      <span className="text-xs font-semibold">
-                        {product.rating}
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-[#e9e6df]">
+                      <span className="absolute left-4 top-4 z-10 rounded-full bg-white/85 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#17202a]">
+                        Featured
                       </span>
+
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={product.images.find((image) => image.is_primary)?.alt_text || product.name}
+                          loading="lazy"
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-sm text-[#687280]">
+                          No image available
+                        </div>
+                      )}
+
+                      {product.stock_quantity <= 0 && (
+                        <span className="absolute bottom-4 left-4 rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-[#17202a]">
+                          Out of stock
+                        </span>
+                      )}
                     </div>
 
-                    <span className="text-xs text-[#687280]">
-                      ({product.reviews})
-                    </span>
-                  </div>
+                    <div className="pt-5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#687280]">
+                        {product.category_name}
+                      </p>
 
-                  {/* Price */}
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="text-base font-semibold text-[#17202a]">
-                      {product.price}
-                    </span>
+                      <h3 className="mt-2 text-base font-semibold tracking-[-0.02em] text-[#17202a]">
+                        {product.name}
+                      </h3>
 
-                    <span className="text-sm text-[#9a9a95] line-through">
-                      {product.oldPrice}
-                    </span>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-sm text-[#2e7d32]">
+                          ★ {Number(product.rating ?? 0).toFixed(1)}
+                        </span>
+                        <span className="text-xs text-[#687280]">
+                          ({product.review_count ?? 0} reviews)
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="text-base font-semibold text-[#17202a]">
+                          {formatPrice(product.price)}
+                        </span>
+
+                        {hasDiscount && (
+                          <>
+                            <span className="text-sm text-[#9a9a95] line-through">
+                              {formatPrice(oldPrice)}
+                            </span>
+                            <span className="text-xs font-semibold text-[#2e7d32]">
+                              {Math.round(
+                                ((oldPrice - Number(product.price)) / oldPrice) * 100
+                              )}% off
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );

@@ -24,11 +24,22 @@ const {
   deleteProduct,
 } = require("../controllers/adminproductdeletecontroller");
 
+const {
+  getActiveProductCount,
+} = require("../controllers/adminproductlistcontroller");
+
 router.get(
   "/",
   authMiddleware,
   adminMiddleware,
   getAllProducts
+);
+
+router.get(
+  "/count",
+  authMiddleware,
+  adminMiddleware,
+  getActiveProductCount
 );
 
 router.get(
