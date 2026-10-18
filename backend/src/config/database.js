@@ -1,3 +1,4 @@
+
 const { Pool } = require("pg");
 
 const pool = new Pool({
@@ -6,12 +7,17 @@ const pool = new Pool({
 
 async function testDatabaseConnection() {
   try {
-    const result = await pool.query("SELECT NOW()");
-    console.log("PostgreSQL connected:", result.rows[0]);
+    const result = await pool.query(`
+      SELECT
+        current_database() AS database_name,
+        current_schema() AS schema_name,
+        current_setting('search_path') AS search_path,
+        to_regclass('users') AS users_table
+    `);
+
+    console.log("DATABASE CHECK:", result.rows[0]);
   } catch (error) {
-    console.error("PostgreSQL connection failed:");
-    console.error(error.message);
-    process.exit(1);
+    console.error("Database connection failed:", error.message);
   }
 }
 
