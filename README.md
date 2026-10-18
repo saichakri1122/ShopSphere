@@ -28,7 +28,22 @@ The application follows a client-server architecture using Next.js, Express.js, 
 
 ## 🏗️ System Architecture
 
+```mermaid
+flowchart TD
+    A[User / Browser] --> B[Next.js Frontend]
+    B -->|HTTPS REST API Requests| C[Express.js Backend]
+    C --> D[Authentication Middleware]
+    C --> E[Controllers and Services]
+    E --> F[(Neon PostgreSQL Database)]
 
+    B -. Hosted on .-> G[Vercel]
+    C -. Hosted on .-> H[Render]
+    F -. Hosted on .-> I[Neon]
+
+    style B fill:#2563eb,color:#ffffff,stroke:#1d4ed8
+    style C fill:#15803d,color:#ffffff,stroke:#166534
+    style F fill:#7c3aed,color:#ffffff,stroke:#6d28d9
+```
 
 ## 🛠️ Tech Stack
 
