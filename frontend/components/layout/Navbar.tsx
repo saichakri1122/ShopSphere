@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getCurrentUser, type User } from "@/lib/auth";
 
+const API_URL = "http://localhost:5000";
+
 const navigation = [
   { label: "Home", href: "/" },
   { label: "Shop", href: "/products" },
@@ -19,6 +21,95 @@ type Category = {
   slug: string;
 };
 
+type ApiItem = {
+  id?: string | number;
+  cart_item_id?: string | number;
+  wishlist_item_id?: string | number;
+  product_id?: string | number;
+  quantity?: number;
+  product?: {
+    id?: string | number;
+  };
+};
+
+function getItems(data: unknown): ApiItem[] {
+  if (!data || typeof data !== "object") return [];
+
+  const response = data as {
+    cart?: { items?: ApiItem[] };
+    wishlist?: { items?: ApiItem[] };
+    items?: ApiItem[];
+  };
+
+  if (Array.isArray(response.cart?.items)) {
+    return response.cart.items;
+  }
+
+  if (Array.isArray(response.wishlist?.items)) {
+    return response.wishlist.items;
+  }
+
+  if (Array.isArray(response.items)) {
+    return response.items;
+  }
+
+  return [];
+}
+
+function getUniqueItemCount(items: ApiItem[]): number {
+  const uniqueProducts = new Set(
+    items
+      .map((item) => item.product_id ?? item.product?.id)
+      .filter((id) => id !== undefined && id !== null)
+      .map(String)
+  );
+
+  return uniqueProducts.size;
+}
+
+function BagIcon() {
+  return (
+    <svg
+      width="21"
+      height="21"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M6 8h12l1 12H5L6 8Z" />
+      <path d="M9 8a3 3 0 0 1 6 0" />
+    </svg>
+  );
+}
+
+function HeartIcon() {
+  return (
+    <svg
+      width="21"
+      height="21"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M20.8 8.6c0 5.5-8.8 10.2-8.8 10.2S3.2 14.1 3.2 8.6A4.6 4.6 0 0 1 12 6.2a4.6 4.6 0 0 1 8.8 2.4Z" />
+    </svg>
+  );
+}
+
+function CountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+
+  return (
+    <span className="absolute -right-0.5 -top-0.5 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#2e7d32] px-1 text-[9px] font-bold text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -31,34 +122,55 @@ export default function Navbar() {
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
 
+  const [cartCount, setCartCount] = useState(0);
+  const [wishlistCount, setWishlistCount] = useState(0);
+
   const initials = user
-    ? `${user.first_name?.charAt(0) || ""}${user.last_name?.charAt(0) || ""}`.toUpperCase()
+    ? `${user.first_name?.charAt(0) || ""}${
+        user.last_name?.charAt(0) || ""
+      }`.toUpperCase()
     : "";
 
+  // Load the current user.
   useEffect(() => {
+    let cancelled = false;
+
     async function loadUser() {
       try {
         const currentUser = await getCurrentUser();
-        setUser(currentUser);
+
+        if (!cancelled) {
+          setUser(currentUser);
+        }
       } catch (error) {
         console.error("Load user error:", error);
+
+        if (!cancelled) {
+          setUser(null);
+        }
       } finally {
-        setLoadingUser(false);
+        if (!cancelled) {
+          setLoadingUser(false);
+        }
       }
     }
 
     void loadUser();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  // Load categories.
   useEffect(() => {
     const controller = new AbortController();
 
     async function loadCategories() {
       try {
-        const response = await fetch(
-          "http://localhost:5000/api/categories",
-          { signal: controller.signal }
-        );
+        const response = await fetch(`${API_URL}/api/categories`, {
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
           throw new Error("Failed to load categories");
@@ -81,6 +193,98 @@ export default function Navbar() {
     return () => controller.abort();
   }, []);
 
+  // Load cart and wishlist counts from the backend.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCounts() {
+      try {
+        const [cartResponse, wishlistResponse] = await Promise.all([
+          fetch(`${API_URL}/api/cart`, {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`${API_URL}/api/wishlist`, {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }),
+        ]);
+
+        if (cancelled) return;
+
+        if (cartResponse.ok) {
+          const cartData = await cartResponse.json();
+          const cartItems = getItems(cartData);
+
+          // Count total units in the cart, including quantities.
+          const totalQuantity = cartItems.reduce(
+            (total, item) => total + Math.max(0, Number(item.quantity) || 0),
+            0
+          );
+
+          setCartCount(totalQuantity);
+        } else if (
+          cartResponse.status === 401 ||
+          cartResponse.status === 403
+        ) {
+          setCartCount(0);
+        }
+
+        if (wishlistResponse.ok) {
+          const wishlistData = await wishlistResponse.json();
+          const wishlistItems = getItems(wishlistData);
+
+          setWishlistCount(getUniqueItemCount(wishlistItems));
+        } else if (
+          wishlistResponse.status === 401 ||
+          wishlistResponse.status === 403
+        ) {
+          setWishlistCount(0);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Load cart/wishlist counts error:", error);
+        }
+      }
+    }
+
+    void loadCounts();
+
+    // Refresh counts when product actions dispatch these events.
+    const handleCartUpdate = () => {
+      void loadCounts();
+    };
+
+    const handleWishlistUpdate = () => {
+      void loadCounts();
+    };
+
+    window.addEventListener("shopsphere:cart-updated", handleCartUpdate);
+    window.addEventListener(
+      "shopsphere:wishlist-updated",
+      handleWishlistUpdate
+    );
+
+    // Refresh counts when the user returns to the browser tab.
+    window.addEventListener("focus", handleCartUpdate);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "shopsphere:cart-updated",
+        handleCartUpdate
+      );
+      window.removeEventListener(
+        "shopsphere:wishlist-updated",
+        handleWishlistUpdate
+      );
+      window.removeEventListener("focus", handleCartUpdate);
+    };
+  }, []);
+
+  // Close menus when navigating to another page.
   useEffect(() => {
     setProfileOpen(false);
     setMobileOpen(false);
@@ -100,20 +304,20 @@ export default function Navbar() {
 
   async function handleLogout() {
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/logout",
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
+      const response = await fetch(`${API_URL}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
 
       if (!response.ok) {
         throw new Error("Logout failed");
       }
 
       setUser(null);
+      setCartCount(0);
+      setWishlistCount(0);
       setProfileOpen(false);
+
       router.push("/");
       router.refresh();
     } catch (error) {
@@ -129,8 +333,8 @@ export default function Navbar() {
     <>
       {/* Announcement */}
       <div className="bg-[#17202a] px-4 py-2 text-center text-[11px] font-medium tracking-wide text-white">
-        Free shipping on orders over ₹999&nbsp;&nbsp; • &nbsp;&nbsp;
-        10% off on your first order
+        Free shipping on orders over ₹999&nbsp;&nbsp; • &nbsp;&nbsp;10% off on
+        your first order
       </div>
 
       <header className="sticky top-0 z-50 border-b border-[#e5e2dc] bg-[#f8f7f4]/95 backdrop-blur-md">
@@ -164,7 +368,7 @@ export default function Navbar() {
                       <span className="text-[10px]">▾</span>
                     </button>
 
-                    {/* Hover Dropdown */}
+                    {/* Categories Dropdown */}
                     <div className="invisible absolute left-0 top-full z-50 w-56 pt-3 opacity-0 transition-all duration-200 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
                       <div className="overflow-hidden rounded-xl border border-[#e5e2dc] bg-white py-2 shadow-lg">
                         {categories.map((category) => (
@@ -221,6 +425,7 @@ export default function Navbar() {
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
+                    aria-hidden="true"
                   >
                     <circle cx="11" cy="11" r="7" />
                     <path d="m20 20-4-4" />
@@ -240,43 +445,22 @@ export default function Navbar() {
 
             {/* Wishlist */}
             <Link
-              href="/wishlist"
-              aria-label="Wishlist"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#17202a] transition hover:bg-[#efede8]"
+              href="/dashboard/wishlist"
+              aria-label={`Wishlist, ${wishlistCount} saved products`}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#17202a] transition hover:bg-[#efede8]"
             >
-              <svg
-                width="21"
-                height="21"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path d="M20.8 8.6c0 5.5-8.8 10.2-8.8 10.2S3.2 14.1 3.2 8.6A4.6 4.6 0 0 1 12 6.2a4.6 4.6 0 0 1 8.8 2.4Z" />
-              </svg>
+              <HeartIcon />
+              <CountBadge count={wishlistCount} />
             </Link>
 
             {/* Cart */}
             <Link
               href="/cart"
-              aria-label="Shopping bag"
+              aria-label={`Shopping bag, ${cartCount} items`}
               className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#17202a] transition hover:bg-[#efede8]"
             >
-              <svg
-                width="21"
-                height="21"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path d="M6 8h12l1 12H5L6 8Z" />
-                <path d="M9 8a3 3 0 0 1 6 0" />
-              </svg>
-
-              <span className="absolute -right-0.5 -top-0.5 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#2e7d32] px-1 text-[9px] font-bold text-white">
-                0
-              </span>
+              <BagIcon />
+              <CountBadge count={cartCount} />
             </Link>
 
             {/* Authentication */}
@@ -346,29 +530,21 @@ export default function Navbar() {
           {/* Mobile Actions */}
           <div className="flex items-center gap-1 md:hidden">
             <Link
-              href="/wishlist"
-              aria-label="Wishlist"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#17202a]"
+              href="/dashboard/wishlist"
+              aria-label={`Wishlist, ${wishlistCount} saved products`}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#17202a]"
             >
-              ♡
+              <HeartIcon />
+              <CountBadge count={wishlistCount} />
             </Link>
 
             <Link
               href="/cart"
-              aria-label="Shopping bag"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#17202a]"
+              aria-label={`Shopping bag, ${cartCount} items`}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#17202a]"
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path d="M6 8h12l1 12H5L6 8Z" />
-                <path d="M9 8a3 3 0 0 1 6 0" />
-              </svg>
+              <BagIcon />
+              <CountBadge count={cartCount} />
             </Link>
 
             <button
@@ -423,9 +599,7 @@ export default function Navbar() {
                         className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium text-[#17202a] hover:bg-[#efede8]"
                       >
                         Categories
-                        <span>
-                          {mobileCategoriesOpen ? "−" : "+"}
-                        </span>
+                        <span>{mobileCategoriesOpen ? "−" : "+"}</span>
                       </button>
 
                       {mobileCategoriesOpen && (

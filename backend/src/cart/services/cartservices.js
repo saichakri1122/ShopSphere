@@ -71,34 +71,37 @@ async function getOrCreateCart(userId) {
 
 // Add product to cart
 async function addToCart(userId, productId, quantity) {
-  const cart = await getOrCreateCart(userId);
+  try {
+    const cart = await getOrCreateCart(userId);
 
-  const result = await pool.query(
-    `
-      INSERT INTO cart_items (
-        cart_id,
-        product_id,
-        quantity
-      )
-      VALUES ($1, $2, $3)
+    const result = await pool.query(
+      `
+        INSERT INTO cart_items (
+          cart_id,
+          product_id,
+          quantity
+        )
+        VALUES ($1, $2, $3)
+        ON CONFLICT (cart_id, product_id)
+        DO UPDATE SET
+          quantity = cart_items.quantity + EXCLUDED.quantity,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING
+          id,
+          cart_id,
+          product_id,
+          quantity,
+          created_at,
+          updated_at
+      `,
+      [cart.id, productId, quantity]
+    );
 
-      ON CONFLICT (cart_id, product_id)
-      DO UPDATE SET
-        quantity = cart_items.quantity + EXCLUDED.quantity,
-        updated_at = CURRENT_TIMESTAMP
-
-      RETURNING
-        id,
-        cart_id,
-        product_id,
-        quantity,
-        created_at,
-        updated_at
-    `,
-    [cart.id, productId, quantity]
-  );
-
-  return result.rows[0];
+    return result.rows[0];
+  } catch (error) {
+    console.error("ADD TO CART DATABASE ERROR:", error);
+    throw error;
+  }
 }
 
 

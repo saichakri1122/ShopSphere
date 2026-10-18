@@ -9,7 +9,6 @@ const {
   validateCreateOrderInput,
 } = require("../validations/ordervalidation");
 
-
 // =========================================================
 // GET ALL ORDERS
 // =========================================================
@@ -34,7 +33,6 @@ async function getOrders(req, res) {
   }
 }
 
-
 // =========================================================
 // GET ONE ORDER
 // =========================================================
@@ -44,10 +42,7 @@ async function getOrder(req, res) {
     const userId = req.user.id;
     const { id: orderId } = req.params;
 
-    const order = await getOrderById(
-      userId,
-      orderId
-    );
+    const order = await getOrderById(userId, orderId);
 
     if (!order) {
       return res.status(404).json({
@@ -70,15 +65,13 @@ async function getOrder(req, res) {
   }
 }
 
-
 // =========================================================
 // CREATE ORDER
 // =========================================================
 
 async function createNewOrder(req, res) {
   try {
-    const validationError =
-      validateCreateOrderInput(req.body);
+    const validationError = validateCreateOrderInput(req.body);
 
     if (validationError) {
       return res.status(400).json({
@@ -88,11 +81,12 @@ async function createNewOrder(req, res) {
     }
 
     const userId = req.user.id;
-    const { addressId } = req.body;
+    const { addressId, couponCode } = req.body;
 
     const order = await createOrder(
       userId,
-      addressId
+      addressId,
+      couponCode
     );
 
     return res.status(201).json({
@@ -100,15 +94,10 @@ async function createNewOrder(req, res) {
       message: "Order created successfully",
       order,
     });
-
   } catch (error) {
+    console.error("Create order error:", error.message);
 
-    console.error(
-      "Create order error:",
-      error.message
-    );
-
-
+    // Address errors
     if (error.message === "ADDRESS_NOT_FOUND") {
       return res.status(404).json({
         success: false,
@@ -116,7 +105,7 @@ async function createNewOrder(req, res) {
       });
     }
 
-
+    // Cart errors
     if (error.message === "CART_NOT_FOUND") {
       return res.status(404).json({
         success: false,
@@ -124,22 +113,20 @@ async function createNewOrder(req, res) {
       });
     }
 
-
     if (error.message === "CART_EMPTY") {
       return res.status(400).json({
         success: false,
-        message: "Cart is empty",
+        message: "Your cart is empty",
       });
     }
 
-
+    // Product errors
     if (error.message.startsWith("PRODUCT_INACTIVE:")) {
       return res.status(400).json({
         success: false,
         message: "One or more products are no longer available",
       });
     }
-
 
     if (error.message.startsWith("INSUFFICIENT_STOCK:")) {
       return res.status(400).json({
@@ -148,6 +135,27 @@ async function createNewOrder(req, res) {
       });
     }
 
+    // Coupon errors
+    if (error.message === "INVALID_COUPON") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coupon code",
+      });
+    }
+
+    if (error.message === "COUPON_MINIMUM_NOT_MET") {
+      return res.status(400).json({
+        success: false,
+        message: "FIRST10 is valid only for orders above ₹999",
+      });
+    }
+
+    if (error.message === "FIRST_ORDER_COUPON_NOT_ELIGIBLE") {
+      return res.status(400).json({
+        success: false,
+        message: "FIRST10 is available only on your first eligible order",
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -155,7 +163,6 @@ async function createNewOrder(req, res) {
     });
   }
 }
-
 
 // =========================================================
 // CANCEL ORDER
@@ -166,24 +173,15 @@ async function cancelExistingOrder(req, res) {
     const userId = req.user.id;
     const { id: orderId } = req.params;
 
-    const order = await cancelOrder(
-      userId,
-      orderId
-    );
+    const order = await cancelOrder(userId, orderId);
 
     return res.status(200).json({
       success: true,
       message: "Order cancelled successfully",
       order,
     });
-
   } catch (error) {
-
-    console.error(
-      "Cancel order error:",
-      error.message
-    );
-
+    console.error("Cancel order error:", error.message);
 
     if (error.message === "ORDER_NOT_FOUND") {
       return res.status(404).json({
@@ -192,14 +190,12 @@ async function cancelExistingOrder(req, res) {
       });
     }
 
-
     if (error.message === "ORDER_CANNOT_BE_CANCELLED") {
       return res.status(400).json({
         success: false,
         message: "This order cannot be cancelled",
       });
     }
-
 
     return res.status(500).json({
       success: false,
@@ -208,6 +204,9 @@ async function cancelExistingOrder(req, res) {
   }
 }
 
+// =========================================================
+// EXPORTS
+// =========================================================
 
 module.exports = {
   getOrders,

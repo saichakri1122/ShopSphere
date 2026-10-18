@@ -1,8 +1,15 @@
 function validateAddToCartInput(data) {
   const { productId, quantity } = data;
 
-  if (!productId || !productId.trim()) {
-    return "Product ID is required";
+  // Product IDs are UUIDs in this project.
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  if (
+    typeof productId !== "string" ||
+    !uuidRegex.test(productId)
+  ) {
+    return "A valid Product ID is required";
   }
 
   if (
@@ -22,7 +29,6 @@ function validateAddToCartInput(data) {
 
   return null;
 }
-
 
 function validateUpdateCartItemInput(data) {
   const { quantity } = data;
@@ -44,7 +50,6 @@ function validateUpdateCartItemInput(data) {
 
   return null;
 }
-
 
 module.exports = {
   validateAddToCartInput,

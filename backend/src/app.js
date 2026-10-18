@@ -36,6 +36,7 @@ app.use("/api/addresses", addressRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/admin/products", adminProductRoutes);
+app.use("/api/admin/customers", require("./routes/admincustomerroutes"));
 
 app.get("/api/health", (req, res) => {
   res.json({

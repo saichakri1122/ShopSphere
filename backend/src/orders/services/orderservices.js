@@ -17,7 +17,6 @@ async function getOrdersByUserId(userId) {
         o.discount_amount,
         o.total_amount,
         o.stock_reserved_until,
-
         o.shipping_full_name,
         o.shipping_phone,
         o.shipping_address_line1,
@@ -26,10 +25,8 @@ async function getOrdersByUserId(userId) {
         o.shipping_state,
         o.shipping_postal_code,
         o.shipping_country,
-
         o.created_at,
         o.updated_at,
-
         COALESCE(
           json_agg(
             json_build_object(
@@ -46,16 +43,10 @@ async function getOrdersByUserId(userId) {
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
         ) AS items
-
       FROM orders o
-
-      LEFT JOIN order_items oi
-        ON o.id = oi.order_id
-
+      LEFT JOIN order_items oi ON o.id = oi.order_id
       WHERE o.user_id = $1
-
       GROUP BY o.id
-
       ORDER BY o.created_at DESC
     `,
     [userId]
@@ -81,7 +72,6 @@ async function getOrderById(userId, orderId) {
         o.discount_amount,
         o.total_amount,
         o.stock_reserved_until,
-
         o.shipping_full_name,
         o.shipping_phone,
         o.shipping_address_line1,
@@ -90,10 +80,8 @@ async function getOrderById(userId, orderId) {
         o.shipping_state,
         o.shipping_postal_code,
         o.shipping_country,
-
         o.created_at,
         o.updated_at,
-
         COALESCE(
           json_agg(
             json_build_object(
@@ -110,15 +98,9 @@ async function getOrderById(userId, orderId) {
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
         ) AS items
-
       FROM orders o
-
-      LEFT JOIN order_items oi
-        ON o.id = oi.order_id
-
-      WHERE o.id = $1
-        AND o.user_id = $2
-
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.id = $1 AND o.user_id = $2
       GROUP BY o.id
     `,
     [orderId, userId]
@@ -131,16 +113,20 @@ async function getOrderById(userId, orderId) {
 // CREATE ORDER FROM CART
 // =========================================================
 
-async function createOrder(userId, addressId) {
+async function createOrder(userId, addressId, couponCode) {
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    // -----------------------------------------------------
-    // 1. Get user's address
-    // -----------------------------------------------------
+    // 1. Lock the user's row to serialize first-order coupon checks.
+    // This prevents simultaneous orders from both claiming FIRST10.
+    await client.query(
+      `SELECT id FROM users WHERE id = $1 FOR UPDATE`,
+      [userId]
+    );
 
+    // 2. Get user's address
     const addressResult = await client.query(
       `
         SELECT
@@ -154,8 +140,7 @@ async function createOrder(userId, addressId) {
           postal_code,
           country
         FROM addresses
-        WHERE id = $1
-          AND user_id = $2
+        WHERE id = $1 AND user_id = $2
       `,
       [addressId, userId]
     );
@@ -166,16 +151,9 @@ async function createOrder(userId, addressId) {
       throw new Error("ADDRESS_NOT_FOUND");
     }
 
-    // -----------------------------------------------------
-    // 2. Get user's cart
-    // -----------------------------------------------------
-
+    // 3. Get user's cart
     const cartResult = await client.query(
-      `
-        SELECT id
-        FROM carts
-        WHERE user_id = $1
-      `,
+      `SELECT id FROM carts WHERE user_id = $1`,
       [userId]
     );
 
@@ -185,30 +163,21 @@ async function createOrder(userId, addressId) {
       throw new Error("CART_NOT_FOUND");
     }
 
-    // -----------------------------------------------------
-    // 3. Get cart items + lock products
-    // -----------------------------------------------------
-
+    // 4. Get cart items and lock products
     const cartItemsResult = await client.query(
       `
         SELECT
           ci.id,
           ci.product_id,
           ci.quantity,
-
           p.name,
           p.slug,
           p.price,
           p.stock_quantity,
           p.is_active
-
         FROM cart_items ci
-
-        INNER JOIN products p
-          ON ci.product_id = p.id
-
+        INNER JOIN products p ON ci.product_id = p.id
         WHERE ci.cart_id = $1
-
         FOR UPDATE OF p
       `,
       [cart.id]
@@ -220,69 +189,81 @@ async function createOrder(userId, addressId) {
       throw new Error("CART_EMPTY");
     }
 
-    // -----------------------------------------------------
-    // 4. Validate products + calculate subtotal
-    // -----------------------------------------------------
-
+    // 5. Validate products and calculate subtotal
     let subtotal = 0;
 
     for (const item of cartItems) {
       if (!item.is_active) {
-        throw new Error(
-          `PRODUCT_INACTIVE:${item.product_id}`
-        );
+        throw new Error(`PRODUCT_INACTIVE:${item.product_id}`);
       }
 
       if (item.stock_quantity < item.quantity) {
-        throw new Error(
-          `INSUFFICIENT_STOCK:${item.product_id}`
-        );
+        throw new Error(`INSUFFICIENT_STOCK:${item.product_id}`);
       }
 
       subtotal += Number(item.price) * item.quantity;
     }
 
-    // -----------------------------------------------------
-    // 5. Calculate totals
-    // -----------------------------------------------------
+    subtotal = Math.round(subtotal * 100) / 100;
 
+    // 6. Apply first-order coupon
     const shippingFee = 0;
-    const discountAmount = 0;
+    let discountAmount = 0;
 
-    const totalAmount =
-      subtotal +
-      shippingFee -
-      discountAmount;
+    const normalizedCoupon = String(couponCode || "")
+      .trim()
+      .toUpperCase();
 
-    // -----------------------------------------------------
-    // 6. Generate order number
-    // -----------------------------------------------------
+    if (normalizedCoupon) {
+      if (normalizedCoupon !== "FIRST10") {
+        throw new Error("INVALID_COUPON");
+      }
 
+      if (subtotal <= 999) {
+        throw new Error("COUPON_MINIMUM_NOT_MET");
+      }
+
+      const previousOrderResult = await client.query(
+        `
+          SELECT id
+          FROM orders
+          WHERE user_id = $1
+            AND status <> 'cancelled'
+          LIMIT 1
+        `,
+        [userId]
+      );
+
+      if (previousOrderResult.rows.length > 0) {
+        throw new Error("FIRST_ORDER_COUPON_NOT_ELIGIBLE");
+      }
+
+      discountAmount = Math.round(subtotal * 10) / 100;
+    }
+
+    const totalAmount = Math.round(
+      (subtotal + shippingFee - discountAmount) * 100
+    ) / 100;
+
+    // 7. Generate order number
     const orderNumber = `SS-${Date.now()}-${Math.floor(
       Math.random() * 1000
     )}`;
 
-    // -----------------------------------------------------
-    // 7. Create order
-    // -----------------------------------------------------
-
+    // 8. Create order
     const orderResult = await client.query(
       `
         INSERT INTO orders (
           user_id,
           address_id,
           order_number,
-
           status,
           payment_status,
-
           subtotal,
           shipping_fee,
           discount_amount,
           total_amount,
-
           stock_reserved_until,
-
           shipping_full_name,
           shipping_phone,
           shipping_address_line1,
@@ -292,32 +273,13 @@ async function createOrder(userId, addressId) {
           shipping_postal_code,
           shipping_country
         )
-
         VALUES (
-          $1,
-          $2,
-          $3,
-
-          'pending',
-          'pending',
-
-          $4,
-          $5,
-          $6,
-          $7,
-
+          $1, $2, $3,
+          'pending', 'pending',
+          $4, $5, $6, $7,
           CURRENT_TIMESTAMP + INTERVAL '15 minutes',
-
-          $8,
-          $9,
-          $10,
-          $11,
-          $12,
-          $13,
-          $14,
-          $15
+          $8, $9, $10, $11, $12, $13, $14, $15
         )
-
         RETURNING
           id,
           order_number,
@@ -334,12 +296,10 @@ async function createOrder(userId, addressId) {
         userId,
         address.id,
         orderNumber,
-
         subtotal,
         shippingFee,
         discountAmount,
         totalAmount,
-
         address.full_name,
         address.phone,
         address.address_line1,
@@ -353,13 +313,9 @@ async function createOrder(userId, addressId) {
 
     const order = orderResult.rows[0];
 
-    // -----------------------------------------------------
-    // 8. Create order items + reserve stock
-    // -----------------------------------------------------
-
+    // 9. Create order items and reserve stock
     for (const item of cartItems) {
-      const itemTotal =
-        Number(item.price) * item.quantity;
+      const itemTotal = Number(item.price) * item.quantity;
 
       await client.query(
         `
@@ -373,17 +329,7 @@ async function createOrder(userId, addressId) {
             total_price,
             stock_reserved
           )
-
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            TRUE
-          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
         `,
         [
           order.id,
@@ -396,44 +342,30 @@ async function createOrder(userId, addressId) {
         ]
       );
 
-      // Reserve stock
       await client.query(
         `
           UPDATE products
-
           SET
             stock_quantity = stock_quantity - $1,
             updated_at = CURRENT_TIMESTAMP
-
           WHERE id = $2
         `,
-        [
-          item.quantity,
-          item.product_id,
-        ]
+        [item.quantity, item.product_id]
       );
     }
 
-    // -----------------------------------------------------
-    // 9. Clear cart
-    // -----------------------------------------------------
-
+    // 10. Clear cart
     await client.query(
-      `
-        DELETE FROM cart_items
-        WHERE cart_id = $1
-      `,
+      `DELETE FROM cart_items WHERE cart_id = $1`,
       [cart.id]
     );
 
     await client.query("COMMIT");
 
     return order;
-
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
-
   } finally {
     client.release();
   }
@@ -443,69 +375,43 @@ async function createOrder(userId, addressId) {
 // RELEASE RESERVED STOCK
 // =========================================================
 
-async function releaseReservedStock(
-  orderId,
-  client
-) {
+async function releaseReservedStock(orderId, client) {
   const itemsResult = await client.query(
     `
-      SELECT
-        id,
-        product_id,
-        quantity
-
+      SELECT id, product_id, quantity
       FROM order_items
-
       WHERE order_id = $1
         AND stock_reserved = TRUE
         AND product_id IS NOT NULL
-
       FOR UPDATE
     `,
     [orderId]
   );
 
   for (const item of itemsResult.rows) {
-
     await client.query(
       `
         UPDATE products
-
         SET
           stock_quantity = stock_quantity + $1,
           updated_at = CURRENT_TIMESTAMP
-
         WHERE id = $2
       `,
-      [
-        item.quantity,
-        item.product_id,
-      ]
+      [item.quantity, item.product_id]
     );
 
-    // Prevent releasing the same stock twice
     await client.query(
-      `
-        UPDATE order_items
-
-        SET
-          stock_reserved = FALSE
-
-        WHERE id = $1
-      `,
+      `UPDATE order_items SET stock_reserved = FALSE WHERE id = $1`,
       [item.id]
     );
   }
 
-  // Reservation is no longer active
   await client.query(
     `
       UPDATE orders
-
       SET
         stock_reserved_until = NULL,
         updated_at = CURRENT_TIMESTAMP
-
       WHERE id = $1
     `,
     [orderId]
@@ -522,29 +428,14 @@ async function cancelOrder(userId, orderId) {
   try {
     await client.query("BEGIN");
 
-    // -----------------------------------------------------
-    // 1. Get order
-    // -----------------------------------------------------
-
     const orderResult = await client.query(
       `
-        SELECT
-          id,
-          status,
-          payment_status,
-          stock_reserved_until
-
+        SELECT id, status, payment_status, stock_reserved_until
         FROM orders
-
-        WHERE id = $1
-          AND user_id = $2
-
+        WHERE id = $1 AND user_id = $2
         FOR UPDATE
       `,
-      [
-        orderId,
-        userId,
-      ]
+      [orderId, userId]
     );
 
     const order = orderResult.rows[0];
@@ -553,43 +444,20 @@ async function cancelOrder(userId, orderId) {
       throw new Error("ORDER_NOT_FOUND");
     }
 
-    // -----------------------------------------------------
-    // 2. Check cancellation status
-    // -----------------------------------------------------
-
-    if (
-      order.status !== "pending" &&
-      order.status !== "confirmed"
-    ) {
-      throw new Error(
-        "ORDER_CANNOT_BE_CANCELLED"
-      );
+    if (order.status !== "pending" && order.status !== "confirmed") {
+      throw new Error("ORDER_CANNOT_BE_CANCELLED");
     }
 
-    // -----------------------------------------------------
-    // 3. Release reserved stock
-    // -----------------------------------------------------
-
-    await releaseReservedStock(
-      orderId,
-      client
-    );
-
-    // -----------------------------------------------------
-    // 4. Cancel order
-    // -----------------------------------------------------
+    await releaseReservedStock(orderId, client);
 
     const updateResult = await client.query(
       `
         UPDATE orders
-
         SET
           status = 'cancelled',
           stock_reserved_until = NULL,
           updated_at = CURRENT_TIMESTAMP
-
         WHERE id = $1
-
         RETURNING
           id,
           order_number,
@@ -604,11 +472,9 @@ async function cancelOrder(userId, orderId) {
     await client.query("COMMIT");
 
     return updateResult.rows[0];
-
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
-
   } finally {
     client.release();
   }
@@ -626,16 +492,9 @@ async function cancelUnpaidOrder(orderId) {
 
     const orderResult = await client.query(
       `
-        SELECT
-          id,
-          status,
-          payment_status,
-          stock_reserved_until
-
+        SELECT id, status, payment_status, stock_reserved_until
         FROM orders
-
         WHERE id = $1
-
         FOR UPDATE
       `,
       [orderId]
@@ -647,36 +506,28 @@ async function cancelUnpaidOrder(orderId) {
       throw new Error("ORDER_NOT_FOUND");
     }
 
-    // Only unpaid orders can be released
     if (order.payment_status === "paid") {
       throw new Error("ORDER_ALREADY_PAID");
     }
 
-    await releaseReservedStock(
-      orderId,
-      client
-    );
+    await releaseReservedStock(orderId, client);
 
     await client.query(
       `
         UPDATE orders
-
         SET
           status = 'cancelled',
           stock_reserved_until = NULL,
           updated_at = CURRENT_TIMESTAMP
-
         WHERE id = $1
       `,
       [orderId]
     );
 
     await client.query("COMMIT");
-
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
-
   } finally {
     client.release();
   }
@@ -692,22 +543,11 @@ async function expireOrderReservation(orderId) {
   try {
     await client.query("BEGIN");
 
-    // -----------------------------------------------------
-    // 1. Lock order
-    // -----------------------------------------------------
-
     const orderResult = await client.query(
       `
-        SELECT
-          id,
-          status,
-          payment_status,
-          stock_reserved_until
-
+        SELECT id, status, payment_status, stock_reserved_until
         FROM orders
-
         WHERE id = $1
-
         FOR UPDATE
       `,
       [orderId]
@@ -719,51 +559,28 @@ async function expireOrderReservation(orderId) {
       throw new Error("ORDER_NOT_FOUND");
     }
 
-    // -----------------------------------------------------
-    // 2. Check reservation
-    // -----------------------------------------------------
-
     if (!order.stock_reserved_until) {
       throw new Error("RESERVATION_NOT_ACTIVE");
     }
 
-    if (
-      new Date(order.stock_reserved_until) > new Date()
-    ) {
+    if (new Date(order.stock_reserved_until) > new Date()) {
       throw new Error("RESERVATION_NOT_EXPIRED");
     }
-
-    // -----------------------------------------------------
-    // 3. Do not expire a paid order
-    // -----------------------------------------------------
 
     if (order.payment_status === "paid") {
       throw new Error("ORDER_ALREADY_PAID");
     }
 
-    // -----------------------------------------------------
-    // 4. Release stock
-    // -----------------------------------------------------
-
-    await releaseReservedStock(
-      orderId,
-      client
-    );
-
-    // -----------------------------------------------------
-    // 5. Cancel expired order
-    // -----------------------------------------------------
+    await releaseReservedStock(orderId, client);
 
     await client.query(
       `
         UPDATE orders
-
         SET
           status = 'cancelled',
           payment_status = 'failed',
           stock_reserved_until = NULL,
           updated_at = CURRENT_TIMESTAMP
-
         WHERE id = $1
       `,
       [orderId]
@@ -776,11 +593,9 @@ async function expireOrderReservation(orderId) {
       status: "cancelled",
       reason: "Stock reservation expired",
     };
-
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
-
   } finally {
     client.release();
   }
