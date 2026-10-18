@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
@@ -52,9 +52,8 @@ function getWishlistItemId(item: WishlistItem): string {
   return String(item.id ?? item.wishlist_item_id ?? "");
 }
 
-export default function ProductsPage() {
+function ProductsContent() {
   const searchParams = useSearchParams();
-
   const searchQuery = searchParams.get("search") || "";
   const categorySlug = searchParams.get("category") || "";
 
@@ -63,22 +62,17 @@ export default function ProductsPage() {
   const [error, setError] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("featured");
-
-  // Product ID -> wishlist item ID
   const [wishlistItems, setWishlistItems] = useState<
     Record<string, string>
   >({});
-
   const [busyActions, setBusyActions] = useState<
     Record<string, boolean>
   >({});
-
   const [notice, setNotice] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
 
-  // Fetch products.
   useEffect(() => {
     const controller = new AbortController();
 
@@ -115,18 +109,15 @@ export default function ProductsPage() {
     }
 
     void fetchProducts();
-
     return () => controller.abort();
   }, []);
 
-  // Load wishlist for logged-in users.
   useEffect(() => {
     const controller = new AbortController();
 
     async function fetchWishlist() {
       try {
         const response = await fetch(`${API}/api/wishlist`, {
-          method: "GET",
           credentials: "include",
           cache: "no-store",
           signal: controller.signal,
@@ -145,10 +136,10 @@ export default function ProductsPage() {
 
         for (const item of items) {
           const productId = getProductId(item);
-          const wishlistItemId = getWishlistItemId(item);
+          const itemId = getWishlistItemId(item);
 
-          if (productId && wishlistItemId) {
-            next[productId] = wishlistItemId;
+          if (productId && itemId) {
+            next[productId] = itemId;
           }
         }
 
@@ -161,7 +152,6 @@ export default function ProductsPage() {
     }
 
     void fetchWishlist();
-
     return () => controller.abort();
   }, []);
 
@@ -176,7 +166,6 @@ export default function ProductsPage() {
   async function isLoggedIn(): Promise<boolean> {
     try {
       const response = await fetch(`${API}/api/auth/me`, {
-        method: "GET",
         credentials: "include",
         cache: "no-store",
       });
@@ -190,12 +179,10 @@ export default function ProductsPage() {
         type: "error",
         message: "Cannot connect to the server. Please try again.",
       });
-
       return false;
     }
   }
 
-  // Add product to cart.
   async function addToCart(product: Product) {
     const productId = String(product.id).trim();
     const actionKey = `cart-${productId}`;
@@ -222,13 +209,8 @@ export default function ProductsPage() {
       const response = await fetch(`${API}/api/cart`, {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          productId,
-          quantity: 1,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, quantity: 1 }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -248,6 +230,7 @@ export default function ProductsPage() {
         type: "success",
         message: `${product.name} added to cart successfully.`,
       });
+
       window.dispatchEvent(new Event("shopsphere:cart-updated"));
     } catch (err) {
       setNotice({
@@ -265,7 +248,6 @@ export default function ProductsPage() {
     }
   }
 
-  // Add or remove product from wishlist.
   async function toggleWishlist(product: Product) {
     const productId = String(product.id).trim();
     const actionKey = `wishlist-${productId}`;
@@ -315,17 +297,17 @@ export default function ProductsPage() {
           type: "success",
           message: `${product.name} removed from wishlist.`,
         });
-        window.dispatchEvent(new Event("shopsphere:wishlist-updated"));
 
+        window.dispatchEvent(
+          new Event("shopsphere:wishlist-updated")
+        );
         return;
       }
 
       const response = await fetch(`${API}/api/wishlist`, {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId }),
       });
 
@@ -337,7 +319,6 @@ export default function ProductsPage() {
       }
 
       if (response.status === 409) {
-        // Already saved. Refresh the wishlist to get the item ID.
         const refreshResponse = await fetch(`${API}/api/wishlist`, {
           credentials: "include",
           cache: "no-store",
@@ -351,12 +332,12 @@ export default function ProductsPage() {
             ? refreshData.wishlist.items
             : [];
 
-          const matchingItem = items.find(
+          const match = items.find(
             (item) => getProductId(item) === productId
           );
 
-          if (matchingItem) {
-            const itemId = getWishlistItemId(matchingItem);
+          if (match) {
+            const itemId = getWishlistItemId(match);
 
             if (itemId) {
               setWishlistItems((current) => ({
@@ -371,7 +352,6 @@ export default function ProductsPage() {
           type: "success",
           message: "This product is already in your wishlist.",
         });
-
         return;
       }
 
@@ -381,10 +361,8 @@ export default function ProductsPage() {
         );
       }
 
-      // Read the returned wishlist item ID.
       let itemId = getWishlistItemId(data.wishlistItem || {});
 
-      // If the response doesn't contain an ID, refresh the wishlist.
       if (!itemId) {
         const refreshResponse = await fetch(`${API}/api/wishlist`, {
           credentials: "include",
@@ -399,13 +377,11 @@ export default function ProductsPage() {
             ? refreshData.wishlist.items
             : [];
 
-          const matchingItem = items.find(
+          const match = items.find(
             (item) => getProductId(item) === productId
           );
 
-          if (matchingItem) {
-            itemId = getWishlistItemId(matchingItem);
-          }
+          if (match) itemId = getWishlistItemId(match);
         }
       }
 
@@ -420,6 +396,10 @@ export default function ProductsPage() {
         type: "success",
         message: `${product.name} added to wishlist.`,
       });
+
+      window.dispatchEvent(
+        new Event("shopsphere:wishlist-updated")
+      );
     } catch (err) {
       setNotice({
         type: "error",
@@ -438,11 +418,8 @@ export default function ProductsPage() {
 
   const categories = useMemo(
     () =>
-      [
-        ...new Set(
-          products.map((product) => product.category_name)
-        ),
-      ].sort(),
+      [...new Set(products.map((product) => product.category_name))]
+        .sort(),
     [products]
   );
 
@@ -465,7 +442,6 @@ export default function ProductsPage() {
 
   const filteredProducts = useMemo(() => {
     let result = [...products];
-
     const query = searchQuery.trim().toLowerCase();
 
     if (query) {
@@ -530,30 +506,19 @@ export default function ProductsPage() {
 
     switch (sortBy) {
       case "price-low":
-        result.sort(
-          (a, b) => Number(a.price) - Number(b.price)
-        );
+        result.sort((a, b) => Number(a.price) - Number(b.price));
         break;
-
       case "price-high":
-        result.sort(
-          (a, b) => Number(b.price) - Number(a.price)
-        );
+        result.sort((a, b) => Number(b.price) - Number(a.price));
         break;
-
       case "rating":
         result.sort(
-          (a, b) =>
-            Number(b.rating || 0) - Number(a.rating || 0)
+          (a, b) => Number(b.rating || 0) - Number(a.rating || 0)
         );
         break;
-
       case "newest":
-        result.sort(
-          (a, b) => Number(b.id) - Number(a.id)
-        );
+        result.sort((a, b) => Number(b.id) - Number(a.id));
         break;
-
       default:
         result.sort(
           (a, b) =>
@@ -648,7 +613,6 @@ export default function ProductsPage() {
               const categoryProduct = products.find(
                 (product) => product.category_name === category
               );
-
               const slug = categoryProduct?.category_slug;
 
               if (!slug) return null;
@@ -714,11 +678,9 @@ export default function ProductsPage() {
         ) : error ? (
           <div className="rounded-xl border border-red-200 bg-white p-8 text-center">
             <p className="font-semibold text-red-600">{error}</p>
-
             <p className="mt-2 text-sm text-gray-500">
-              Check that your backend is running on port 5000.
+              Check your backend deployment and API URL.
             </p>
-
             <button
               onClick={() => window.location.reload()}
               className="mt-5 rounded-lg bg-[#17202a] px-5 py-3 text-sm text-white"
@@ -728,14 +690,10 @@ export default function ProductsPage() {
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="rounded-xl border border-[#e5e2dc] bg-white px-5 py-16 text-center">
-            <h2 className="text-xl font-semibold">
-              No Products Found
-            </h2>
-
+            <h2 className="text-xl font-semibold">No Products Found</h2>
             <p className="mt-2 text-sm text-gray-500">
               Try another search or choose a different category.
             </p>
-
             <Link
               href="/products"
               className="mt-5 inline-block rounded-lg bg-[#17202a] px-5 py-3 text-sm text-white"
@@ -752,10 +710,8 @@ export default function ProductsPage() {
 
               const price = Number(product.price);
               const comparePrice = Number(product.compare_at_price);
-
               const hasDiscount =
-                Number.isFinite(comparePrice) &&
-                comparePrice > price;
+                Number.isFinite(comparePrice) && comparePrice > price;
 
               const discount = hasDiscount
                 ? Math.round(
@@ -764,9 +720,7 @@ export default function ProductsPage() {
                 : 0;
 
               const productId = String(product.id);
-              const isWishlisted = Boolean(
-                wishlistItems[productId]
-              );
+              const isWishlisted = Boolean(wishlistItems[productId]);
 
               return (
                 <article
@@ -776,11 +730,9 @@ export default function ProductsPage() {
                   <button
                     type="button"
                     onClick={() => void toggleWishlist(product)}
-                    disabled={
-                      Boolean(
-                        busyActions[`wishlist-${productId}`]
-                      )
-                    }
+                    disabled={Boolean(
+                      busyActions[`wishlist-${productId}`]
+                    )}
                     aria-label={
                       isWishlisted
                         ? `Remove ${product.name} from wishlist`
@@ -897,5 +849,19 @@ export default function ProductsPage() {
 
       <Footer />
     </main>
+  );
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#f8f7f4] p-10">
+          Loading products...
+        </main>
+      }
+    >
+      <ProductsContent />
+    </Suspense>
   );
 }
