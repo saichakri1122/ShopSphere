@@ -12,6 +12,7 @@ const addressRoutes = require("./addresses/routes/addressroutes");
 const orderRoutes = require("./orders/routes/orderroutes");
 const paymentRoutes = require("./payments/routes/paymentroutes");
 const adminProductRoutes = require("./products/routes/adminproductroutes");
+const aiRoutes = require("./routes/airoutes");
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/admin/products", adminProductRoutes);
 app.use("/api/admin/customers", require("./routes/admincustomerroutes"));
+app.use("/api/ai", aiRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
