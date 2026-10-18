@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const API_URL = "http://localhost:5000";
+const API_URL = "https://shopsphere-yx9j.onrender.com";
 
 export default function AdminDashboard() {
   const [totalProducts, setTotalProducts] = useState<number | null>(null);

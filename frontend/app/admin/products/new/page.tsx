@@ -21,7 +21,7 @@ type ApiResponse = {
   };
 };
 
-const API_URL = "http://localhost:5000";
+const API_URL = "https://shopsphere-yx9j.onrender.com";
 
 const inputClass =
   "w-full rounded-xl border border-[#e5e2dc] bg-white px-4 py-3 text-sm text-[#17202a] outline-none transition focus:border-[#17202a] disabled:cursor-not-allowed disabled:bg-[#f8f7f4]";
