@@ -29,7 +29,7 @@ type Product = {
 
 type SortOption = "discount" | "price-low" | "price-high" | "rating";
 
-const API_URL = "http://localhost:5000/api/products";
+const API_URL = `${process.env.NEXT_PUBLIC_API_URL}/api/products`;
 
 function formatPrice(price: number | string | null | undefined) {
   return new Intl.NumberFormat("en-IN", {

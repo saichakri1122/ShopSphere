@@ -77,7 +77,7 @@ export default function Categories() {
     async function fetchCategories() {
       try {
         const response = await fetch(
-          "http://localhost:5000/api/categories",
+          `${process.env.NEXT_PUBLIC_API_URL}/api/categories`,
           { signal: controller.signal }
         );
 

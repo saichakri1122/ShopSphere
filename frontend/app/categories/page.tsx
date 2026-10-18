@@ -16,7 +16,7 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/categories")
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load categories");
         return res.json();

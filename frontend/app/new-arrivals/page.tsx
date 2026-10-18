@@ -30,7 +30,7 @@ type Product = {
 
 type SortOption = "newest" | "price-low" | "price-high" | "rating";
 
-const API_URL = "http://localhost:5000/api/products";
+const API_URL = `${process.env.NEXT_PUBLIC_API_URL}/api/products`;
 
 function formatPrice(price: number | string | null | undefined) {
   const amount = Number(price ?? 0);

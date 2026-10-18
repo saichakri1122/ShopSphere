@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getCurrentUser, type User } from "@/lib/auth";
 
-const API_URL = "http://localhost:5000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const navigation = [
   { label: "Home", href: "/" },

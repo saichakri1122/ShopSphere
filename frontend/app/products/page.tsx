@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/home/Footer";
 
-const API = "http://localhost:5000";
+const API = process.env.NEXT_PUBLIC_API_URL;
 
 type ProductImage = {
   id: number;

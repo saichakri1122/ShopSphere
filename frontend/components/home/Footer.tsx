@@ -31,7 +31,7 @@ export default function Footer() {
     async function fetchCategories() {
       try {
         const response = await fetch(
-          "http://localhost:5000/api/categories"
+          `${process.env.NEXT_PUBLIC_API_URL}/api/categories`
         );
 
         if (!response.ok) return;

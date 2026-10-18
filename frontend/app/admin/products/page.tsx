@@ -4,7 +4,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-const API_URL = "http://localhost:5000";
+const API_URL = "https://shopsphere-yx9j.onrender.com";
+
 
 type Product = {
   id: string | number;
